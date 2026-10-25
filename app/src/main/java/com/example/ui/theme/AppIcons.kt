@@ -433,3 +433,132 @@ val Icons.Filled.Image: ImageVector by lazy {
         close()
     }
 }
+
+val Icons.Filled.Bluetooth: ImageVector by lazy {
+    createVector("Bluetooth") {
+        moveTo(17.71f, 7.71f)
+        lineTo(12f, 2f)
+        horizontalLineToRelative(-1f)
+        verticalLineToRelative(7.59f)
+        lineTo(6.41f, 5f)
+        lineTo(5f, 6.41f)
+        lineTo(10.59f, 12f)
+        lineTo(5f, 17.59f)
+        lineTo(6.41f, 19f)
+        lineTo(11f, 14.41f)
+        verticalLineTo(22f)
+        horizontalLineToRelative(1f)
+        lineToRelative(5.71f, -5.71f)
+        lineToRelative(-4.3f, -4.29f)
+        lineToRelative(4.3f, -4.29f)
+        close()
+        moveTo(13f, 5.83f)
+        lineToRelative(1.88f, 1.88f)
+        lineTo(13f, 9.59f)
+        verticalLineTo(5.83f)
+        close()
+        moveTo(14.88f, 16.29f)
+        lineTo(13f, 18.17f)
+        verticalLineToRelative(-3.76f)
+        lineToRelative(1.88f, 1.88f)
+        close()
+    }
+}
+
+val Icons.Filled.Download: ImageVector by lazy {
+    createVector("Download") {
+        moveTo(5f, 20f)
+        horizontalLineToRelative(14f)
+        verticalLineToRelative(-2f)
+        horizontalLineTo(5f)
+        verticalLineToRelative(2f)
+        close()
+        moveTo(19f, 9f)
+        horizontalLineToRelative(-4f)
+        verticalLineTo(3f)
+        horizontalLineTo(9f)
+        verticalLineToRelative(6f)
+        horizontalLineTo(5f)
+        lineToRelative(7f, 7f)
+        lineToRelative(7f, -7f)
+        close()
+    }
+}
+
+val Icons.Filled.CloudSync: ImageVector get() = Icons.Filled.Backup
+
+val Icons.Filled.CloudDownload: ImageVector by lazy {
+    createVector("CloudDownload") {
+        moveTo(19.35f, 10.04f)
+        curveTo(18.67f, 6.59f, 15.64f, 4f, 12f, 4f)
+        curveTo(9.11f, 4f, 6.6f, 5.64f, 5.35f, 8.04f)
+        curveTo(2.34f, 8.36f, 0f, 10.91f, 0f, 14f)
+        curveToRelative(0f, 3.31f, 2.69f, 6f, 6f, 6f)
+        horizontalLineToRelative(13f)
+        curveToRelative(2.76f, 0f, 5f, -2.24f, 5f, -5f)
+        curveToRelative(0f, -2.64f, -2.05f, -4.78f, -4.65f, -4.96f)
+        close()
+        moveTo(17f, 13f)
+        lineToRelative(-5f, 5f)
+        lineToRelative(-5f, -5f)
+        horizontalLineToRelative(3f)
+        verticalLineTo(9f)
+        horizontalLineToRelative(4f)
+        verticalLineToRelative(4f)
+        horizontalLineToRelative(3f)
+        close()
+    }
+}
+
+val Icons.Filled.ContentCopy: ImageVector by lazy {
+    createVector("ContentCopy") {
+        moveTo(16f, 1f)
+        horizontalLineTo(4f)
+        curveToRelative(-1.1f, 0f, -2f, 0.9f, -2f, 2f)
+        verticalLineToRelative(14f)
+        horizontalLineToRelative(2f)
+        verticalLineTo(3f)
+        horizontalLineToRelative(12f)
+        verticalLineTo(1f)
+        close()
+        moveTo(19f, 5f)
+        horizontalLineTo(8f)
+        curveToRelative(-1.1f, 0f, -2f, 0.9f, -2f, 2f)
+        verticalLineToRelative(14f)
+        curveToRelative(0f, 1.1f, 0.9f, 2f, 2f, 2f)
+        horizontalLineToRelative(11f)
+        curveToRelative(1.1f, 0f, 2f, -0.9f, 2f, -2f)
+        verticalLineTo(7f)
+        curveToRelative(0f, -1.1f, -0.9f, -2f, -2f, -2f)
+        close()
+        moveTo(19f, 21f)
+        horizontalLineTo(8f)
+        verticalLineTo(7f)
+        horizontalLineToRelative(11f)
+        verticalLineToRelative(14f)
+        close()
+    }
+}
+
+val Icons.Filled.FolderOpen: ImageVector by lazy {
+    createVector("FolderOpen") {
+        moveTo(20f, 6f)
+        horizontalLineToRelative(-8f)
+        lineToRelative(-2f, -2f)
+        horizontalLineTo(4f)
+        curveToRelative(-1.1f, 0f, -1.99f, 0.9f, -1.99f, 2f)
+        lineTo(2f, 18f)
+        curveToRelative(0f, 1.1f, 0.9f, 2f, 2f, 2f)
+        horizontalLineToRelative(16f)
+        curveToRelative(1.1f, 0f, 2f, -0.9f, 2f, -2f)
+        verticalLineTo(8f)
+        curveToRelative(0f, -1.1f, -0.9f, -2f, -2f, -2f)
+        close()
+        moveTo(20f, 18f)
+        horizontalLineTo(4f)
+        verticalLineTo(8f)
+        horizontalLineToRelative(16f)
+        verticalLineToRelative(10f)
+        close()
+    }
+}

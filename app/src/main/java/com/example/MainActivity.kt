@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.StoreRepository
 import com.example.model.*
+import com.example.ui.BackupRestoreDialog
 import com.example.ui.CustomerAccountScreen
 import com.example.ui.GlobalTransactionsScreen
 import com.example.ui.InventoryScreen
@@ -148,6 +149,7 @@ fun AppNavigation() {
                                 currentScreen = Screen.CustomerAccount(customerId)
                             },
                             onUpdateCustomers = { updateCustomers(it) },
+                            onUpdateStock = { updateStock(it) },
                             onQuickInvoice = { customerId ->
                                 currentScreen = Screen.InvoiceBuilder(customerId, null)
                             }
@@ -228,6 +230,7 @@ fun MainCustomerListScreen(
     stockList: List<StockItem> = emptyList(),
     onSelectCustomer: (String) -> Unit,
     onUpdateCustomers: (List<Customer>) -> Unit,
+    onUpdateStock: (List<StockItem>) -> Unit = {},
     onQuickInvoice: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -236,6 +239,7 @@ fun MainCustomerListScreen(
     var customerToEdit by remember { mutableStateOf<Customer?>(null) }
     var customerToDelete by remember { mutableStateOf<Customer?>(null) }
     var showQuickInvoicePicker by remember { mutableStateOf(false) }
+    var showBackupRestoreDialog by remember { mutableStateOf(false) }
 
     // Summary calculation
     val (totalYER, totalSAR) = remember(customers) {
@@ -292,22 +296,14 @@ fun MainCustomerListScreen(
                     }
 
                     IconButton(
-                        onClick = {
-                            val backupText = StoreRepository.exportBackup(customers, stockList)
-                            val sendIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(Intent.EXTRA_TEXT, "نسخة احتياطية - بقالة العزي:\n$backupText")
-                                type = "text/plain"
-                            }
-                            context.startActivity(Intent.createChooser(sendIntent, "تصدير النسخة الاحتياطية"))
-                        },
+                        onClick = { showBackupRestoreDialog = true },
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            Icons.Default.Backup,
-                            contentDescription = "نسخ احتياطي",
+                            Icons.Filled.Backup,
+                            contentDescription = "النسخ الاحتياطي والاستعادة",
                             tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -795,6 +791,18 @@ fun MainCustomerListScreen(
                 TextButton(onClick = { showQuickInvoicePicker = false }) {
                     Text("إلغاء")
                 }
+            }
+        )
+    }
+
+    if (showBackupRestoreDialog) {
+        BackupRestoreDialog(
+            customers = customers,
+            stockList = stockList,
+            onDismiss = { showBackupRestoreDialog = false },
+            onRestore = { restoredCustomers, restoredStock ->
+                onUpdateCustomers(restoredCustomers)
+                onUpdateStock(restoredStock)
             }
         )
     }
