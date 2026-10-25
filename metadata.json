@@ -1,0 +1,6 @@
+{
+  "name": "بقالة العزي",
+  "description": "تطبيق إدارة بقالة العزي للمواد الغذائية والديون والفواتير",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
