@@ -46,29 +46,24 @@ fun CustomerAccountScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+
     var quickAmount by remember { mutableStateOf("") }
     var quickNote by remember { mutableStateOf("") }
     var quickDate by remember { mutableStateOf(getCurrentDateTime().split(" ")[0]) }
     var quickRef by remember { mutableStateOf("") }
     var selectedCurrency by remember { mutableStateOf(AppCurrency.YER) }
-    var entryToEdit by remember { mutableStateOf<TransactionEntry?>(null) }
-    var entryToDelete by remember { mutableStateOf<TransactionEntry?>(null) }
-    var showPrinterDialog by remember { mutableStateOf(false) }
     var showShareMenuForStatement by remember { mutableStateOf(false) }
+    var showPrinterDialog by remember { mutableStateOf(false) }
     var invoiceToPrint by remember { mutableStateOf<TransactionEntry?>(null) }
     var isPrintStatement by remember { mutableStateOf(false) }
 
     val (balYER, balSAR) = remember(customer.entries) { StoreRepository.calculateCustomerBalances(customer) }
-    val ledger = remember(customer.entries) { StoreRepository.computeLedger(customer) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) {
-            showPrinterDialog = true
-        } else {
-            Toast.makeText(context, "صلاحية Bluetooth مطلوبة للطباعة", Toast.LENGTH_SHORT).show()
-        }
+        if (isGranted) showPrinterDialog = true
+        else Toast.makeText(context, "صلاحية Bluetooth مطلوبة للطباعة", Toast.LENGTH_SHORT).show()
     }
 
     fun requestBluetoothPrint(isStatement: Boolean, invoice: TransactionEntry? = null) {
@@ -87,24 +82,18 @@ fun CustomerAccountScreen(
         topBar = {
             Surface(
                 color = GreenPrimary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
+                modifier = Modifier.fillMaxWidth().statusBarsPadding()
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                        .padding(horizontal = 4.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
+
                     Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 2.dp),
+                        modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -113,6 +102,7 @@ fun CustomerAccountScreen(
                             Text("• ${customer.phone}", fontSize = 11.sp, color = Color(0xFFC8E6C9), maxLines = 1)
                         }
                     }
+
                     IconButton(
                         onClick = {
                             val bmp = ThermalPrinter.createStatementBitmap(customer, is80mm = false)
@@ -122,6 +112,7 @@ fun CustomerAccountScreen(
                     ) {
                         Icon(Icons.Default.Send, contentDescription = "إرسال واتساب", tint = Color(0xFF69F0AE), modifier = Modifier.size(18.dp))
                     }
+
                     Box {
                         IconButton(onClick = { showShareMenuForStatement = true }, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.MoreVert, contentDescription = "خيارات الطباعة والمشاركة", tint = Color.White, modifier = Modifier.size(20.dp))
@@ -130,7 +121,10 @@ fun CustomerAccountScreen(
                             expanded = showShareMenuForStatement,
                             onDismissRequest = { showShareMenuForStatement = false }
                         ) {
-                            DropdownMenuItem(text = { Text("🖨️ طباعة حرارية (Bluetooth)") }, onClick = { showShareMenuForStatement = false; requestBluetoothPrint(isStatement = true) })
+                            DropdownMenuItem(text = { Text("🖨️ طباعة حرارية (Bluetooth)") }, onClick = {
+                                showShareMenuForStatement = false
+                                requestBluetoothPrint(isStatement = true)
+                            })
                             DropdownMenuItem(text = { Text("📄 تصدير / طباعة PDF") }, onClick = {
                                 showShareMenuForStatement = false
                                 val bmp = ThermalPrinter.createStatementBitmap(customer, is80mm = true)
@@ -159,11 +153,7 @@ fun CustomerAccountScreen(
         modifier = modifier
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(BackgroundGray)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).background(BackgroundGray).padding(horizontal = 10.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Card(
@@ -172,22 +162,28 @@ fun CustomerAccountScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
                         Text("الرصيد باليمني (ر.ي)", fontSize = 11.sp, color = TextMuted)
-                        Text(text = String.format("%,.0f ر.ي", balYER), fontWeight = FontWeight.Bold, fontSize = 17.sp, color = if (balYER > 0) RedDebit else if (balYER < 0) GreenCredit else TextDark)
-                        Text(text = if (balYER > 0) "عليه مديونية" else if (balYER < 0) "له رصيد دائن" else "خالص", fontSize = 10.sp, color = if (balYER > 0) RedDebit else if (balYER < 0) GreenCredit else TextMuted)
+                        Text(
+                            text = String.format("%,.0f ر.ي", balYER),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            color = if (balYER > 0) RedDebit else if (balYER < 0) GreenCredit else TextDark
+                        )
                     }
                     VerticalDivider(modifier = Modifier.height(40.dp), color = Color(0xFFE2E8F0))
                     Column(horizontalAlignment = Alignment.End) {
                         Text("الرصيد بالسعودي (ر.س)", fontSize = 11.sp, color = TextMuted)
-                        Text(text = String.format("%,.0f ر.س", balSAR), fontWeight = FontWeight.Bold, fontSize = 17.sp, color = if (balSAR > 0) RedDebit else if (balSAR < 0) GreenCredit else TextDark)
-                        Text(text = if (balSAR > 0) "عليه مديونية" else if (balSAR < 0) "له رصيد دائن" else "خالص", fontSize = 10.sp, color = if (balSAR > 0) RedDebit else if (balSAR < 0) GreenCredit else TextMuted)
+                        Text(
+                            text = String.format("%,.0f ر.س", balSAR),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            color = if (balSAR > 0) RedDebit else if (balSAR < 0) GreenCredit else TextDark
+                        )
                     }
                 }
             }
@@ -198,9 +194,7 @@ fun CustomerAccountScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
                     Row(
@@ -230,7 +224,11 @@ fun CustomerAccountScreen(
                                 Text("سعودي (ر.س)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (selectedCurrency == AppCurrency.SAR) Color.White else TextDark)
                             }
                         }
-                        TextButton(onClick = { onOpenInvoiceBuilder(null) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+
+                        TextButton(
+                            onClick = { onOpenInvoiceBuilder(null) },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
                             Icon(Icons.Default.ReceiptLong, null, Modifier.size(16.dp), tint = GreenPrimary)
                             Spacer(Modifier.width(4.dp))
                             Text("فاتورة بأصناف", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenPrimary)
@@ -248,9 +246,7 @@ fun CustomerAccountScreen(
                             placeholder = { Text("0") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier
-                                .weight(1.1f)
-                                .height(58.dp),
+                            modifier = Modifier.weight(1.1f).height(58.dp),
                             shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = GreenPrimary,
@@ -259,14 +255,13 @@ fun CustomerAccountScreen(
                                 unfocusedContainerColor = Color(0xFFF8FAFC)
                             )
                         )
+
                         OutlinedTextField(
                             value = quickDate,
                             onValueChange = { quickDate = it },
                             label = { Text("التاريخ") },
                             singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(58.dp),
+                            modifier = Modifier.weight(1f).height(58.dp),
                             shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = GreenPrimary,
@@ -276,6 +271,7 @@ fun CustomerAccountScreen(
                             )
                         )
                     }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -286,9 +282,7 @@ fun CustomerAccountScreen(
                             label = { Text("البيان / التفاصيل") },
                             placeholder = { Text("مثال: سداد / شراء...") },
                             singleLine = true,
-                            modifier = Modifier
-                                .weight(1.3f)
-                                .height(58.dp),
+                            modifier = Modifier.weight(1.3f).height(58.dp),
                             shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = GreenPrimary,
@@ -297,15 +291,14 @@ fun CustomerAccountScreen(
                                 unfocusedContainerColor = Color(0xFFF8FAFC)
                             )
                         )
+
                         OutlinedTextField(
                             value = quickRef,
                             onValueChange = { quickRef = it },
                             label = { Text("رقم السند / ملاحظة") },
                             placeholder = { Text("اختياري") },
                             singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(58.dp),
+                            modifier = Modifier.weight(1f).height(58.dp),
                             shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = GreenPrimary,
@@ -315,6 +308,7 @@ fun CustomerAccountScreen(
                             )
                         )
                     }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -328,11 +322,21 @@ fun CustomerAccountScreen(
                                     val noteText = if (quickRef.isNotBlank()) {
                                         if (quickNote.isNotBlank()) "${quickNote.trim()} (${quickRef.trim()})" else quickRef.trim()
                                     } else quickNote.trim()
+
                                     val entryDate = if (quickDate.isNotBlank()) {
                                         val timePart = getCurrentDateTime().split(" ").getOrNull(1) ?: "12:00"
                                         if (quickDate.contains(" ")) quickDate else "$quickDate $timePart"
                                     } else getCurrentDateTime()
-                                    val entry = TransactionEntry(title = if (quickNote.isNotBlank()) quickNote else "سند قبض / دفعة", amount = amt, currency = selectedCurrency, kind = EntryKind.CREDIT, date = entryDate, note = noteText)
+
+                                    val entry = TransactionEntry(
+                                        title = if (quickNote.isNotBlank()) quickNote else "سند قبض / دفعة",
+                                        amount = amt,
+                                        currency = selectedCurrency,
+                                        kind = EntryKind.CREDIT,
+                                        date = entryDate,
+                                        note = noteText
+                                    )
+
                                     onUpdateCustomer(customer.copy(entries = customer.entries + entry))
                                     quickAmount = ""
                                     quickNote = ""
@@ -348,6 +352,7 @@ fun CustomerAccountScreen(
                             Spacer(Modifier.width(4.dp))
                             Text("له (سداد)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
+
                         Button(
                             onClick = {
                                 val amt = quickAmount.toDoubleOrNull()
@@ -357,11 +362,21 @@ fun CustomerAccountScreen(
                                     val noteText = if (quickRef.isNotBlank()) {
                                         if (quickNote.isNotBlank()) "${quickNote.trim()} (${quickRef.trim()})" else quickRef.trim()
                                     } else quickNote.trim()
+
                                     val entryDate = if (quickDate.isNotBlank()) {
                                         val timePart = getCurrentDateTime().split(" ").getOrNull(1) ?: "12:00"
                                         if (quickDate.contains(" ")) quickDate else "$quickDate $timePart"
                                     } else getCurrentDateTime()
-                                    val entry = TransactionEntry(title = if (quickNote.isNotBlank()) quickNote else "قيد دين مباشر", amount = amt, currency = selectedCurrency, kind = EntryKind.DEBIT, date = entryDate, note = noteText)
+
+                                    val entry = TransactionEntry(
+                                        title = if (quickNote.isNotBlank()) quickNote else "قيد دين مباشر",
+                                        amount = amt,
+                                        currency = selectedCurrency,
+                                        kind = EntryKind.DEBIT,
+                                        date = entryDate,
+                                        note = noteText
+                                    )
+
                                     onUpdateCustomer(customer.copy(entries = customer.entries + entry))
                                     quickAmount = ""
                                     quickNote = ""
@@ -380,250 +395,7 @@ fun CustomerAccountScreen(
                     }
                 }
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("سجل المعاملات والعمليات (${customer.entries.size})", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextDark)
-            }
-
-            if (ledger.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("لا توجد عمليات مسجلة حتى الآن", color = TextMuted, fontSize = 13.sp)
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(bottom = 12.dp)
-                ) {
-                    items(ledger, key = { it.entry.id }) { item ->
-                        LedgerCard(
-                            item = item,
-                            customerPhone = customer.phone,
-                            onEdit = {
-                                if (item.entry.kind == EntryKind.INVOICE) {
-                                    onOpenInvoiceBuilder(item.entry)
-                                } else {
-                                    entryToEdit = item.entry
-                                }
-                            },
-                            onDelete = { entryToDelete = item.entry },
-                            onWhatsAppShare = {
-                                val bmp = if (item.entry.kind == EntryKind.INVOICE) {
-                                    ThermalPrinter.createInvoiceBitmap(customer, item.entry, is80mm = false)
-                                } else {
-                                    ThermalPrinter.createInvoiceBitmap(customer, item.entry.copy(title = "سند عملية - ${item.entry.title}"), is80mm = false)
-                                }
-                                ShareUtils.shareImage(context, bmp, "receipt_${item.entry.id.take(6)}", customer.phone, "إيصال معاملة بقالة العزي - ${customer.name}")
-                            },
-                            onImageShare = {
-                                val bmp = if (item.entry.kind == EntryKind.INVOICE) {
-                                    ThermalPrinter.createInvoiceBitmap(customer, item.entry, is80mm = false)
-                                } else {
-                                    ThermalPrinter.createInvoiceBitmap(customer, item.entry.copy(title = "سند عملية - ${item.entry.title}"), is80mm = false)
-                                }
-                                ShareUtils.shareImage(context, bmp, "receipt_${item.entry.id.take(6)}", customer.phone, "إيصال معاملة بقالة العزي - ${customer.name}")
-                            },
-                            onPdfPrint = {
-                                val bmp = if (item.entry.kind == EntryKind.INVOICE) {
-                                    ThermalPrinter.createInvoiceBitmap(customer, item.entry, is80mm = true)
-                                } else {
-                                    ThermalPrinter.createInvoiceBitmap(customer, item.entry.copy(title = "سند عملية - ${item.entry.title}"), is80mm = true)
-                                }
-                                PdfAndPrintUtils.printViaSystemManager(context, bmp, "معاملة_${item.entry.id.take(6)}")
-                            },
-                            onBluetoothPrint = {
-                                if (item.entry.kind == EntryKind.INVOICE) {
-                                    requestBluetoothPrint(isStatement = false, invoice = item.entry)
-                                } else {
-                                    requestBluetoothPrint(isStatement = true)
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    if (showPrinterDialog) {
-        BluetoothPrinterPicker(
-            onDismiss = { showPrinterDialog = false },
-            onDeviceSelected = { device ->
-                showPrinterDialog = false
-                Toast.makeText(context, "جاري إرسال الطباعة إلى ${device.name ?: "الطابعة"}...", Toast.LENGTH_SHORT).show()
-                val bytes = if (!isPrintStatement && invoiceToPrint != null) {
-                    val bmp = ThermalPrinter.createInvoiceBitmap(customer, invoiceToPrint!!, is80mm = false)
-                    ThermalPrinter.bitmapToEscPosBytes(bmp)
-                } else {
-                    val bmp = ThermalPrinter.createStatementBitmap(customer, is80mm = false)
-                    ThermalPrinter.bitmapToEscPosBytes(bmp)
-                }
-                ThermalPrinter.printViaBluetooth(device, bytes) { success, msg ->
-                    (context as? android.app.Activity)?.runOnUiThread {
-                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-        )
-    }
-}
-
-@Composable
-fun LedgerCard(
-    item: LedgerEntry,
-    customerPhone: String,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onWhatsAppShare: () -> Unit,
-    onImageShare: () -> Unit,
-    onPdfPrint: () -> Unit,
-    onBluetoothPrint: () -> Unit
-) {
-    val entry = item.entry
-    val isCredit = entry.kind == EntryKind.CREDIT
-    val isInvoice = entry.kind == EntryKind.INVOICE
-    val badgeColor = if (isCredit) GreenCredit else RedDebit
-    val badgeText = when (entry.kind) {
-        EntryKind.CREDIT -> "له"
-        EntryKind.DEBIT -> "عليه"
-        EntryKind.INVOICE -> "فاتورة"
-    }
-    val running = if (entry.currency == AppCurrency.SAR) item.runningBalanceSAR else item.runningBalanceYER
-
-    Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(badgeColor.copy(alpha = 0.15f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(badgeText, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = badgeColor)
-                    }
-                    Text(
-                        text = if (isInvoice && entry.invoiceNumber.isNotBlank()) entry.invoiceNumber else entry.title,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = TextDark
-                    )
-                }
-                Text(
-                    text = "${if (isCredit) "−" else "+"} ${String.format("%,.0f", entry.amount)} ${entry.currency.symbol}",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = badgeColor
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(entry.date, fontSize = 10.sp, color = TextMuted)
-                Text(
-                    text = "الرصيد: ${String.format("%,.0f", running)} ${entry.currency.symbol} ${if (running > 0) "(عليه)" else if (running < 0) "(له)" else "(خالص)"}",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (running > 0) RedDebit else if (running < 0) GreenCredit else TextMuted
-                )
-            }
-            if (entry.note.isNotBlank()) {
-                Text("بيان: ${entry.note}", fontSize = 11.sp, color = Color(0xFF475569))
-            }
-            if (entry.items.isNotEmpty()) {
-                Text("عدد الأصناف: ${entry.items.size} | الواصل: ${String.format("%,.0f", entry.paid)} | المتبقي: ${String.format("%,.0f", entry.remaining)}", fontSize = 10.sp, color = TextMuted)
-            }
-            HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(top = 2.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = onWhatsAppShare,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Icon(Icons.Default.Send, null, Modifier.size(14.dp), tint = Color(0xFF2E7D32))
-                    Spacer(Modifier.width(3.dp))
-                    Text("واتساب", fontSize = 11.sp, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
-                }
-                Row(horizontalArrangement = Arrangement.End) {
-                    IconButton(onClick = onImageShare, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Image, contentDescription = "صورة", Modifier.size(15.dp), tint = TextMuted) }
-                    IconButton(onClick = onPdfPrint, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.PictureAsPdf, contentDescription = "PDF", Modifier.size(15.dp), tint = TextMuted) }
-                    IconButton(onClick = onBluetoothPrint, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Print, contentDescription = "طابعة", Modifier.size(15.dp), tint = TextMuted) }
-                    IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Edit, contentDescription = "تعديل", Modifier.size(15.dp), tint = TextMuted) }
-                    IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Delete, contentDescription = "حذف", Modifier.size(15.dp), tint = RedDebit) }
-                }
-            }
         }
     }
 }
 
-@Composable
-fun BluetoothPrinterPicker(
-    onDismiss: () -> Unit,
-    onDeviceSelected: (android.bluetooth.BluetoothDevice) -> Unit
-) {
-    val adapter = remember { android.bluetooth.BluetoothAdapter.getDefaultAdapter() }
-    val pairedDevices = remember {
-        try {
-            adapter?.bondedDevices?.toList() ?: emptyList()
-        } catch (_: SecurityException) {
-            emptyList()
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("اختيار طابعة Bluetooth (58/80مم)") },
-        text = {
-            if (adapter == null) {
-                Text("هذا الجهاز لا يدعم البلوتوث.")
-            } else if (pairedDevices.isEmpty()) {
-                Text("لا توجد طابعات مقترنة. يرجى إقران الطابعة الحرارية في إعدادات الهاتف أولاً.")
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(pairedDevices) { device ->
-                        OutlinedButton(
-                            onClick = { onDeviceSelected(device) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Text(device.name ?: "طابعة Bluetooth", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text(device.address, fontSize = 10.sp, color = TextMuted)
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("إغلاق") }
-        }
-    )
-}
