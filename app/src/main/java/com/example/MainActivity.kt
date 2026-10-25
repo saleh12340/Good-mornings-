@@ -368,7 +368,7 @@ fun MainCustomerListScreen(
                 }
             }
 
-            // بطاقة إضافة عميل سريع في أعلى الشاشة (مربعات الإدخال في صفوف أفقية)
+            // بطاقة إضافة عميل سريع في أعلى الشاشة (مربعات الإدخال في صف واحد مهيأ لاستقبال بيانات جديدة)
             var quickCustomerName by remember { mutableStateOf("") }
             var quickCustomerPhone by remember { mutableStateOf("") }
             var quickCustomerAddress by remember { mutableStateOf("") }
@@ -376,7 +376,7 @@ fun MainCustomerListScreen(
             var showExtraCustomerInputs by remember { mutableStateOf(false) }
 
             Card(
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
@@ -384,12 +384,18 @@ fun MainCustomerListScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // الصف الأول: [اسم العميل] [الهاتف] [+ إضافة]
+                    Text(
+                        text = "إضافة عميل جديد",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GreenPrimary
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedTextField(
@@ -399,8 +405,16 @@ fun MainCustomerListScreen(
                             placeholder = { Text("محمد، علي...", fontSize = 10.sp) },
                             singleLine = true,
                             textStyle = TextStyle(fontSize = 11.5.sp),
-                            modifier = Modifier.weight(1.3f),
-                            shape = RoundedCornerShape(6.dp)
+                            modifier = Modifier
+                                .weight(1.35f)
+                                .height(58.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GreenPrimary,
+                                unfocusedBorderColor = Color(0xFFE2E8F0),
+                                focusedContainerColor = Color(0xFFF8FFFB),
+                                unfocusedContainerColor = Color(0xFFF8FAFC)
+                            )
                         )
 
                         OutlinedTextField(
@@ -411,8 +425,16 @@ fun MainCustomerListScreen(
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             textStyle = TextStyle(fontSize = 11.5.sp),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(6.dp)
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(58.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GreenPrimary,
+                                unfocusedBorderColor = Color(0xFFE2E8F0),
+                                focusedContainerColor = Color(0xFFF8FFFB),
+                                unfocusedContainerColor = Color(0xFFF8FAFC)
+                            )
                         )
 
                         Button(
@@ -442,21 +464,20 @@ fun MainCustomerListScreen(
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
-                            shape = RoundedCornerShape(6.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                            modifier = Modifier.height(48.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.height(58.dp)
                         ) {
                             Icon(Icons.Default.PersonAdd, null, Modifier.size(16.dp))
-                            Spacer(Modifier.width(2.dp))
+                            Spacer(Modifier.width(4.dp))
                             Text("إضافة", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    // الصف الثاني: [العنوان / المنطقة] [ملاحظات] [زر إظهار/إخفاء]
                     if (showExtraCustomerInputs) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedTextField(
@@ -466,8 +487,16 @@ fun MainCustomerListScreen(
                                 placeholder = { Text("اختياري", fontSize = 10.sp) },
                                 singleLine = true,
                                 textStyle = TextStyle(fontSize = 11.sp),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(6.dp)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(54.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = GreenPrimary,
+                                    unfocusedBorderColor = Color(0xFFE2E8F0),
+                                    focusedContainerColor = Color(0xFFF8FFFB),
+                                    unfocusedContainerColor = Color(0xFFF8FAFC)
+                                )
                             )
 
                             OutlinedTextField(
@@ -477,8 +506,16 @@ fun MainCustomerListScreen(
                                 placeholder = { Text("اختياري", fontSize = 10.sp) },
                                 singleLine = true,
                                 textStyle = TextStyle(fontSize = 11.sp),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(6.dp)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(54.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = GreenPrimary,
+                                    unfocusedBorderColor = Color(0xFFE2E8F0),
+                                    focusedContainerColor = Color(0xFFF8FFFB),
+                                    unfocusedContainerColor = Color(0xFFF8FAFC)
+                                )
                             )
                         }
                     }
@@ -487,7 +524,7 @@ fun MainCustomerListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { showExtraCustomerInputs = !showExtraCustomerInputs }
-                            .padding(vertical = 1.dp),
+                            .padding(vertical = 2.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -525,15 +562,24 @@ fun MainCustomerListScreen(
                         }
                     },
                     singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = GreenPrimary,
+                        unfocusedBorderColor = Color(0xFFE2E8F0),
+                        focusedContainerColor = Color(0xFFF8FFFB),
+                        unfocusedContainerColor = Color(0xFFF8FAFC)
+                    )
                 )
 
                 Button(
                     onClick = { showQuickInvoicePicker = true },
                     colors = ButtonDefaults.buttonColors(containerColor = AmberSAR),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.height(54.dp)
                 ) {
                     Icon(Icons.Default.ReceiptLong, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
@@ -613,7 +659,6 @@ fun MainCustomerListScreen(
             title = { Text(if (customerToEdit == null) "إضافة عميل جديد" else "تعديل بيانات العميل") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // الصف الأول (جنب إلى جنب): اسم العميل + رقم الهاتف
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -635,7 +680,6 @@ fun MainCustomerListScreen(
                         )
                     }
 
-                    // الصف الثاني (جنب إلى جنب): العنوان / المنطقة + ملاحظات
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
