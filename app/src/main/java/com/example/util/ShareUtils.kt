@@ -2,6 +2,7 @@ package com.example.util
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
@@ -33,6 +34,31 @@ object ShareUtils {
     }
 
     /**
+     * Checks if a package (like WhatsApp or WhatsApp Business) is installed.
+     */
+    fun isPackageInstalled(context: Context, packageName: String): Boolean {
+        return try {
+            context.packageManager.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Finds installed WhatsApp package (regular WhatsApp or WhatsApp Business).
+     */
+    fun getInstalledWhatsAppPackage(context: Context): String? {
+        val packages = listOf("com.whatsapp", "com.whatsapp.w4b")
+        for (pkg in packages) {
+            if (isPackageInstalled(context, pkg)) {
+                return pkg
+            }
+        }
+        return null
+    }
+
+    /**
      * Saves a Bitmap to internal cache and returns its content Uri via FileProvider.
      */
     fun saveBitmapToCache(context: Context, bitmap: Bitmap, fileName: String): Uri {
@@ -52,9 +78,10 @@ object ShareUtils {
     }
 
     /**
-     * Shares an image bitmap to WhatsApp or system chooser with optional phone and caption.
+     * Enhanced WhatsApp image and invoice/statement sharing.
+     * Directly targets WhatsApp / WhatsApp Business with the recipient phone number and image attachment.
      */
-    fun shareImage(
+    fun shareImageToWhatsApp(
         context: Context,
         bitmap: Bitmap,
         fileName: String,
@@ -64,6 +91,7 @@ object ShareUtils {
         try {
             val uri = saveBitmapToCache(context, bitmap, fileName)
             val cleanedPhone = cleanPhoneNumber(phone)
+            val waPackage = getInstalledWhatsAppPackage(context)
 
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
@@ -72,16 +100,19 @@ object ShareUtils {
                     putExtra(Intent.EXTRA_TEXT, caption)
                 }
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
                 if (cleanedPhone.isNotBlank()) {
                     putExtra("jid", "$cleanedPhone@s.whatsapp.net")
-                    setPackage("com.whatsapp")
+                }
+                if (waPackage != null) {
+                    setPackage(waPackage)
                 }
             }
 
             try {
                 context.startActivity(intent)
             } catch (_: Exception) {
-                // If direct WhatsApp fails (e.g. not installed or jid rejected), fallback to chooser
+                // If package-specific send failed, try open via chooser targeting WhatsApp or system
                 val fallbackIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "image/png"
                     putExtra(Intent.EXTRA_STREAM, uri)
@@ -90,45 +121,71 @@ object ShareUtils {
                     }
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(fallbackIntent, "مشاركة الفاتورة / كشف الحساب"))
+                context.startActivity(Intent.createChooser(fallbackIntent, "إرسال عبر واتساب"))
             }
         } catch (e: Exception) {
-            Toast.makeText(context, "تعذر مشاركة الصورة: ${e.localizedMessage ?: "خطأ غير متوقع"}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "تعذر مشاركة الصورة: ${e.localizedMessage ?: "خطأ"}", Toast.LENGTH_SHORT).show()
         }
     }
 
     /**
-     * Shares formatted text directly to WhatsApp contact or opens system chooser.
+     * Backwards-compatible alias for shareImage (routes directly to improved WhatsApp sharing).
+     */
+    fun shareImage(
+        context: Context,
+        bitmap: Bitmap,
+        fileName: String,
+        phone: String = "",
+        caption: String = ""
+    ) {
+        shareImageToWhatsApp(context, bitmap, fileName, phone, caption)
+    }
+
+    /**
+     * Improved WhatsApp direct messaging.
+     * Tries whatsapp:// scheme first, falls back to web API, with user-friendly Arabic error if WhatsApp is absent.
      */
     fun shareTextToWhatsApp(context: Context, phone: String, message: String) {
         val cleanedPhone = cleanPhoneNumber(phone)
+        val encoded = try { URLEncoder.encode(message, "UTF-8") } catch (_: Exception) { message }
+
         if (cleanedPhone.isNotBlank()) {
             try {
-                val encoded = URLEncoder.encode(message, "UTF-8")
-                val uri = Uri.parse("https://api.whatsapp.com/send?phone=$cleanedPhone&text=$encoded")
-                val intent = Intent(Intent.ACTION_VIEW, uri)
+                // Try deep link scheme directly into WhatsApp app
+                val uriScheme = Uri.parse("whatsapp://send?phone=$cleanedPhone&text=$encoded")
+                val intent = Intent(Intent.ACTION_VIEW, uriScheme)
+                val waPackage = getInstalledWhatsAppPackage(context)
+                if (waPackage != null) {
+                    intent.setPackage(waPackage)
+                }
+                context.startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // Fallback to web link which opens WhatsApp app or prompts install
+                try {
+                    val webUri = Uri.parse("https://api.whatsapp.com/send?phone=$cleanedPhone&text=$encoded")
+                    val webIntent = Intent(Intent.ACTION_VIEW, webUri)
+                    context.startActivity(webIntent)
+                    return
+                } catch (_: Exception) {}
+            }
+        } else {
+            // No phone number provided - open WhatsApp contact selector
+            try {
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, message)
+                    val waPackage = getInstalledWhatsAppPackage(context)
+                    if (waPackage != null) {
+                        setPackage(waPackage)
+                    }
+                }
                 context.startActivity(intent)
                 return
             } catch (_: Exception) {}
         }
 
-        // Fallback to general text share
-        shareGeneralText(context, message)
-    }
-
-    /**
-     * Shares plain text via standard Android chooser.
-     */
-    fun shareGeneralText(context: Context, text: String) {
-        try {
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, text)
-            }
-            context.startActivity(Intent.createChooser(intent, "مشاركة النص"))
-        } catch (e: Exception) {
-            Toast.makeText(context, "تعذر المشاركة: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-        }
+        Toast.makeText(context, "تطبيق واتساب غير مثبت على الجهاز", Toast.LENGTH_SHORT).show()
     }
 
     /**

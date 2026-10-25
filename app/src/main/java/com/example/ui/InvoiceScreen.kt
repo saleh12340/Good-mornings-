@@ -1,9 +1,13 @@
 package com.example.ui
 
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.speech.RecognizerIntent
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -15,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -30,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,25 +79,35 @@ fun InvoiceScreen(
         }
     }
 
-    // New item inputs: اسم الصنف - الكمية - القيمة الإجمالية (في صف واحد)
+    // Manual item inputs: اسم الصنف - العدد - سعر الواحدة - الإجمالي
     var itemName by remember { mutableStateOf("") }
     var itemQty by remember { mutableStateOf("1") }
+    var itemUnitPrice by remember { mutableStateOf("") }
     var itemTotal by remember { mutableStateOf("") }
 
-    // Last known unit price for auto-scaling when quantity changes
-    var knownUnitPrice by remember { mutableStateOf<Double?>(null) }
-
-    // سعر الواحدة مستنتج تلقائياً: القيمة الإجمالية ÷ الكمية
-    val parsedQty = itemQty.toDoubleOrNull() ?: 1.0
-    val parsedTotal = itemTotal.toDoubleOrNull() ?: 0.0
-    val inferredUnitPrice = if (parsedQty > 0 && parsedTotal > 0) parsedTotal / parsedQty else (knownUnitPrice ?: 0.0)
+    // Voice recognition feedback state
+    var voiceRecognizedFeedback by remember { mutableStateOf<String?>(null) }
 
     fun onQuantityChanged(newQtyStr: String) {
         itemQty = newQtyStr.filter { ch -> ch.isDigit() || ch == '.' }
         val q = itemQty.toDoubleOrNull() ?: 1.0
-        val unitP = knownUnitPrice
-        if (unitP != null && unitP > 0) {
-            itemTotal = String.format("%.0f", q * unitP)
+        val u = itemUnitPrice.toDoubleOrNull()
+        if (u != null && u > 0) {
+            itemTotal = String.format("%.0f", q * u)
+        } else {
+            val t = itemTotal.toDoubleOrNull()
+            if (t != null && t > 0 && q > 0) {
+                itemUnitPrice = String.format("%.1f", t / q).replace(".0", "")
+            }
+        }
+    }
+
+    fun onUnitPriceChanged(newUnitStr: String) {
+        itemUnitPrice = newUnitStr.filter { ch -> ch.isDigit() || ch == '.' }
+        val q = itemQty.toDoubleOrNull() ?: 1.0
+        val u = itemUnitPrice.toDoubleOrNull() ?: 0.0
+        if (q > 0 && u > 0) {
+            itemTotal = String.format("%.0f", q * u)
         }
     }
 
@@ -100,14 +116,14 @@ fun InvoiceScreen(
         val q = itemQty.toDoubleOrNull() ?: 1.0
         val t = itemTotal.toDoubleOrNull() ?: 0.0
         if (q > 0 && t > 0) {
-            knownUnitPrice = t / q
+            itemUnitPrice = String.format("%.1f", t / q).replace(".0", "")
         }
     }
 
-    fun addItemToInvoice() {
-        val q = itemQty.toDoubleOrNull() ?: 1.0
-        val t = itemTotal.toDoubleOrNull() ?: 0.0
-        if (itemName.isBlank()) {
+    fun addItemToInvoice(name: String = itemName, qtyStr: String = itemQty, totalStr: String = itemTotal) {
+        val q = qtyStr.toDoubleOrNull() ?: 1.0
+        val t = totalStr.toDoubleOrNull() ?: 0.0
+        if (name.isBlank()) {
             Toast.makeText(context, "الرجاء كتابة اسم الصنف", Toast.LENGTH_SHORT).show()
             return
         }
@@ -118,7 +134,7 @@ fun InvoiceScreen(
         val unitP = if (q > 0) t / q else t
         items.add(
             InvoiceItem(
-                name = itemName.trim(),
+                name = name.trim(),
                 quantity = q,
                 unitPrice = unitP,
                 total = t
@@ -127,8 +143,43 @@ fun InvoiceScreen(
         // Reset inputs
         itemName = ""
         itemQty = "1"
+        itemUnitPrice = ""
         itemTotal = ""
-        knownUnitPrice = null
+        voiceRecognizedFeedback = null
+    }
+
+    // Voice recognition launcher
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val spoken = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!spoken.isNullOrBlank()) {
+                val parsed = SmartVoiceParser.parse(spoken)
+                itemName = parsed.name
+                itemQty = if (parsed.quantity % 1.0 == 0.0) parsed.quantity.toLong().toString() else parsed.quantity.toString()
+                itemTotal = if (parsed.total % 1.0 == 0.0) parsed.total.toLong().toString() else String.format("%.0f", parsed.total)
+                if (parsed.quantity > 0 && parsed.total > 0) {
+                    itemUnitPrice = String.format("%.1f", parsed.total / parsed.quantity).replace(".0", "")
+                }
+                voiceRecognizedFeedback = "تم التعرف: ${parsed.name} (عدد: ${parsed.quantity}، إجمالي: ${parsed.total} ${currency.symbol})"
+                Toast.makeText(context, "تم التعرف على الصوت بنجاح", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun launchVoiceInput() {
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "انطق: [القيمة] [الصنف] [الكمية]\nمثال: 4000 كرتون عصير 2")
+            }
+            speechLauncher.launch(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "التعرف الصوتي غير مدعوم على هذا الجهاز", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // Discount and Paid inputs
@@ -144,6 +195,16 @@ fun InvoiceScreen(
     // Printing and Sharing Dialogs
     var showPrinterDialog by remember { mutableStateOf(false) }
     var showShareMenu by remember { mutableStateOf(false) }
+    var showUnsavedExitDialog by remember { mutableStateOf(false) }
+
+    // Intercept hardware and gesture back if there are unsaved invoice items
+    BackHandler {
+        if (items.isNotEmpty()) {
+            showUnsavedExitDialog = true
+        } else {
+            onBack()
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -175,7 +236,6 @@ fun InvoiceScreen(
     }
 
     Scaffold(
-        // ترويسة صغيرة جداً تستغل المساحة بالكامل
         topBar = {
             Surface(
                 color = GreenPrimary,
@@ -186,13 +246,19 @@ fun InvoiceScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
-                        .padding(horizontal = 4.dp),
+                        .height(48.dp)
+                        .padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.size(36.dp)
+                        onClick = {
+                            if (items.isNotEmpty()) {
+                                showUnsavedExitDialog = true
+                            } else {
+                                onBack()
+                            }
+                        },
+                        modifier = Modifier.size(38.dp)
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
@@ -202,51 +268,51 @@ fun InvoiceScreen(
                         )
                     }
 
-                    // عنوان مدمج في سطر واحد
-                    Row(
+                    Column(
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            .padding(horizontal = 4.dp)
                     ) {
                         Text(
-                            text = if (existingInvoice == null) "فاتورة جديدة" else "تعديل فاتورة",
+                            text = "فاتورة #${invoiceNumber} - بقالة العزي",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp,
-                            color = Color.White
+                            fontSize = 14.sp,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "• ${customer.name}",
-                            fontSize = 11.5.sp,
+                            text = "العميل: ${customer.name}",
+                            fontSize = 11.sp,
                             color = Color(0xFFC8E6C9),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
 
-                    // إرسال واتساب سريع
+                    // Reset Invoice items button
                     IconButton(
                         onClick = {
-                            val inv = currentInvoiceObject()
-                            val text = StoreRepository.generateInvoiceText(customer, inv)
-                            ShareUtils.shareTextToWhatsApp(context, customer.phone, text)
+                            if (items.isNotEmpty()) {
+                                items.clear()
+                                Toast.makeText(context, "تم مسح أصناف الفاتورة", Toast.LENGTH_SHORT).show()
+                            }
                         },
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(38.dp)
                     ) {
                         Icon(
-                            Icons.Default.Send,
-                            contentDescription = "إرسال واتساب",
-                            tint = Color(0xFF69F0AE),
-                            modifier = Modifier.size(18.dp)
+                            Icons.Default.Refresh,
+                            contentDescription = "إعادة تعيين",
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp)
                         )
                     }
 
-                    // قائمة خيارات الطباعة والمشاركة
+                    // Share Options
                     Box {
                         IconButton(
                             onClick = { showShareMenu = true },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(38.dp)
                         ) {
                             Icon(
                                 Icons.Default.MoreVert,
@@ -299,37 +365,108 @@ fun InvoiceScreen(
                                     ShareUtils.shareTextToWhatsApp(context, customer.phone, text)
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("🔗 مشاركة نصية") },
-                                onClick = {
-                                    showShareMenu = false
-                                    val inv = currentInvoiceObject()
-                                    val text = StoreRepository.generateInvoiceText(customer, inv)
-                                    ShareUtils.shareGeneralText(context, text)
-                                }
-                            )
                         }
                     }
-
-                    // زر حفظ مضغوط وأنيق في الترويسة
-                    Button(
-                        onClick = {
-                            if (items.isEmpty()) {
-                                Toast.makeText(context, "الرجاء إضافة صنف واحد على الأقل للفاتورة", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            onSaveInvoice(currentInvoiceObject())
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = AmberSAR),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                        modifier = Modifier
-                            .height(30.dp)
-                            .padding(start = 2.dp),
-                        shape = RoundedCornerShape(4.dp)
+                }
+            }
+        },
+        bottomBar = {
+            // Soft Neumorphic Bottom Action Bar (Screenshot 1)
+            Surface(
+                color = Color.White,
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Summary Strip
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Save, null, Modifier.size(13.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text("حفظ", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(
+                            text = "المبلغ الإجمالي: ${String.format("%,.0f", netTotal)} ${currency.symbol}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = TextDark
+                        )
+                        Text(
+                            text = if (remaining > 0) "المتبقي: ${String.format("%,.0f", remaining)} ${currency.symbol}" else "خالص ✓",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = if (remaining > 0) RedDebit else GreenCredit
+                        )
+                    }
+
+                    // 3 Large Action Buttons: Save, Thermal Print, Share (Screenshot 1)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // حفظ (Save)
+                        Button(
+                            onClick = {
+                                if (items.isEmpty()) {
+                                    Toast.makeText(context, "الرجاء إضافة صنف واحد على الأقل للفاتورة", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                onSaveInvoice(currentInvoiceObject())
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("حفظ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+
+                        // طباعة حرارية (Thermal Print - Deep Blue)
+                        Button(
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= 31 &&
+                                    ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    permissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                                } else {
+                                    showPrinterDialog = true
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
+                            modifier = Modifier
+                                .weight(1.3f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("طباعة حرارية", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+
+                        // مشاركة (Share - WhatsApp)
+                        OutlinedButton(
+                            onClick = {
+                                val inv = currentInvoiceObject()
+                                val bmp = ThermalPrinter.createInvoiceBitmap(customer, inv, is80mm = false)
+                                ShareUtils.shareImage(context, bmp, "inv_${inv.invoiceNumber}", customer.phone, "فاتورة مبيعات - ${customer.name}")
+                            },
+                            border = BorderStroke(1.dp, Color(0xFF25D366)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, tint = Color(0xFF1B5E20), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("مشاركة", color = Color(0xFF1B5E20), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
                 }
             }
@@ -340,173 +477,105 @@ fun InvoiceScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(BackgroundGray)
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .background(SoftBackground)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 1. بيانات الفاتورة المدمجة (رقم الفاتورة، التاريخ، طريقة السداد، العملة)
+            // 1. Smart Arabic Voice Input Card (Matching Screenshot 1)
             item {
-                Card(
-                    shape = RoundedCornerShape(6.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
+                SoftCard(
+                    elevation = 2.dp,
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // صف رقم الفاتورة والتاريخ
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Instruction prompt box
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(SoftInputBg)
+                                .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
                         ) {
-                            OutlinedTextField(
-                                value = invoiceNumber,
-                                onValueChange = { invoiceNumber = it },
-                                label = { Text("رقم الفاتورة", fontSize = 10.sp) },
-                                singleLine = true,
-                                textStyle = TextStyle(fontSize = 11.5.sp),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-                            OutlinedTextField(
-                                value = invoiceDate,
-                                onValueChange = { invoiceDate = it },
-                                label = { Text("التاريخ والوقت", fontSize = 10.sp) },
-                                singleLine = true,
-                                textStyle = TextStyle(fontSize = 11.5.sp),
-                                modifier = Modifier.weight(1.3f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-                        }
-
-                        // صف نوع الدفع والعملة في صف واحد مدمج جداً
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // نوع الدفع: آجل / نقداً
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .border(0.5.dp, Color(0xFFCBD5E1), RoundedCornerShape(4.dp))
-                            ) {
-                                PaymentType.values().forEach { type ->
-                                    val isSelected = paymentType == type
-                                    Box(
-                                        modifier = Modifier
-                                            .clickable { paymentType = type }
-                                            .background(if (isSelected) GreenPrimary else Color.Transparent)
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            type.label,
-                                            fontSize = 10.5.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) Color.White else TextDark
-                                        )
-                                    }
-                                }
-                            }
-
-                            // العملة: ر.ي / ر.س
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .border(0.5.dp, Color(0xFFCBD5E1), RoundedCornerShape(4.dp))
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .clickable { currency = AppCurrency.YER }
-                                        .background(if (currency == AppCurrency.YER) GreenPrimary else Color.Transparent)
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        "ر.ي",
-                                        fontSize = 10.5.sp,
-                                        fontWeight = if (currency == AppCurrency.YER) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (currency == AppCurrency.YER) Color.White else TextDark
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clickable { currency = AppCurrency.SAR }
-                                        .background(if (currency == AppCurrency.SAR) AmberSAR else Color.Transparent)
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        "ر.س",
-                                        fontSize = 10.5.sp,
-                                        fontWeight = if (currency == AppCurrency.SAR) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (currency == AppCurrency.SAR) Color.White else TextDark
-                                    )
-                                }
+                            Column {
+                                Text(
+                                    text = "انطق: [القيمة] [الصنف] [الكمية]",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.5.sp,
+                                    color = TextDark
+                                )
+                                Text(
+                                    text = "(مثال: 4000 كرتون عصير 2)",
+                                    fontSize = 10.5.sp,
+                                    color = TextMuted
+                                )
                             }
                         }
 
-                        // صف مدخلات الخصم والواصل والملاحظة في أعلى الشاشة (جنب إلى جنب)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Spacer(Modifier.width(8.dp))
+
+                        // Dark Blue / Green Soft Mic Button
+                        Button(
+                            onClick = { launchVoiceInput() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.height(48.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp)
                         ) {
-                            OutlinedTextField(
-                                value = discountStr,
-                                onValueChange = { discountStr = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                                label = { Text("الخصم (${currency.symbol})", fontSize = 10.sp) },
-                                placeholder = { Text("0", fontSize = 10.sp) },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                textStyle = TextStyle(fontSize = 11.5.sp),
-                                modifier = Modifier.weight(0.9f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
+                            Icon(Icons.Default.Mic, contentDescription = "صوتي", tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("صوتي", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
 
-                            OutlinedTextField(
-                                value = paidStr,
-                                onValueChange = { paidStr = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                                label = { Text("الواصل (${currency.symbol})", fontSize = 10.sp) },
-                                placeholder = { Text("0", fontSize = 10.sp) },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                textStyle = TextStyle(fontSize = 11.5.sp),
-                                modifier = Modifier.weight(0.9f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-
-                            OutlinedTextField(
-                                value = invoiceNote,
-                                onValueChange = { invoiceNote = it },
-                                label = { Text("ملاحظة الفاتورة", fontSize = 10.sp) },
-                                placeholder = { Text("اختياري", fontSize = 10.sp) },
-                                singleLine = true,
-                                textStyle = TextStyle(fontSize = 11.sp),
-                                modifier = Modifier.weight(1.2f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
+                    // Voice recognized banner
+                    if (voiceRecognizedFeedback != null) {
+                        Spacer(Modifier.height(6.dp))
+                        Surface(
+                            color = Color(0xFFE8F5E9),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, GreenPrimary.copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = voiceRecognizedFeedback!!,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = GreenPrimary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    onClick = { addItemToInvoice() },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("+ إضافة الآن", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GreenPrimary)
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            // 2. بطاقة إدخال الصنف: [اسم الصنف] [الكمية] [القيمة الإجمالية] في صف واحد + سعر الواحدة مستنتج
+            // 2. Manual Item Entry Strip Card (Screenshot 1)
             item {
-                Card(
-                    shape = RoundedCornerShape(6.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                SoftCard(
+                    elevation = 2.dp,
+                    shape = RoundedCornerShape(14.dp)
                 ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 6.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // اقتراحات سريعة ومضغوطة من المخزن
+                        // Stock suggestions chips
                         val matchingStock = remember(itemName, stockList) {
                             if (itemName.isBlank()) stockList.take(6)
                             else stockList.filter { it.name.contains(itemName.trim(), ignoreCase = true) }.take(6)
@@ -520,35 +589,313 @@ fun InvoiceScreen(
                                     val isDeficit = stock.quantity < 0
                                     Surface(
                                         color = if (isDeficit) Color(0xFFFFEBEE) else Color(0xFFF1F8E9),
-                                        shape = RoundedCornerShape(4.dp),
+                                        shape = RoundedCornerShape(6.dp),
                                         border = BorderStroke(0.5.dp, if (isDeficit) RedDebit.copy(alpha = 0.5f) else GreenPrimary.copy(alpha = 0.4f)),
                                         modifier = Modifier.clickable {
                                             itemName = stock.name
                                             if (stock.salePrice > 0) {
-                                                knownUnitPrice = stock.salePrice
+                                                itemUnitPrice = stock.salePrice.toString()
                                                 val q = itemQty.toDoubleOrNull() ?: 1.0
                                                 itemTotal = String.format("%.0f", q * stock.salePrice)
                                             }
                                         }
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                        Text(
+                                            text = if (stock.salePrice > 0) "${stock.name} (${stock.salePrice.toInt()})" else stock.name,
+                                            fontSize = 10.5.sp,
+                                            color = if (isDeficit) RedDebit else TextDark,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Row: [التفاصيل (الصنف)] [العدد] [سعر الواحدة] [الإجمالي]
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 1. التفاصيل (الصنف)
+                            OutlinedTextField(
+                                value = itemName,
+                                onValueChange = { itemName = it },
+                                label = { Text("التفاصيل (الصنف) *", fontSize = 10.sp) },
+                                placeholder = { Text("أرز، سكر...", fontSize = 10.sp) },
+                                singleLine = true,
+                                textStyle = TextStyle(fontSize = 12.sp),
+                                modifier = Modifier.weight(1.5f).height(54.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = GreenPrimary,
+                                    unfocusedBorderColor = Color(0xFFE2E8F0),
+                                    unfocusedContainerColor = SoftInputBg
+                                )
+                            )
+
+                            // 2. العدد (الكمية)
+                            OutlinedTextField(
+                                value = itemQty,
+                                onValueChange = { onQuantityChanged(it) },
+                                label = { Text("العدد", fontSize = 10.sp) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                textStyle = TextStyle(fontSize = 12.sp),
+                                modifier = Modifier.weight(0.7f).height(54.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = GreenPrimary,
+                                    unfocusedBorderColor = Color(0xFFE2E8F0),
+                                    unfocusedContainerColor = SoftInputBg
+                                )
+                            )
+
+                            // 3. سعر الواحدة
+                            OutlinedTextField(
+                                value = itemUnitPrice,
+                                onValueChange = { onUnitPriceChanged(it) },
+                                label = { Text("سعر الواحدة", fontSize = 10.sp) },
+                                placeholder = { Text("مستنتج", fontSize = 9.sp) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                textStyle = TextStyle(fontSize = 12.sp),
+                                modifier = Modifier.weight(0.9f).height(54.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = GreenPrimary,
+                                    unfocusedBorderColor = Color(0xFFE2E8F0),
+                                    unfocusedContainerColor = SoftInputBg
+                                )
+                            )
+
+                            // 4. الإجمالي
+                            OutlinedTextField(
+                                value = itemTotal,
+                                onValueChange = { onTotalChanged(it) },
+                                label = { Text("الإجمالي (${currency.symbol})", fontSize = 10.sp) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                                modifier = Modifier.weight(1f).height(54.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = GreenPrimary,
+                                    unfocusedBorderColor = Color(0xFFE2E8F0),
+                                    unfocusedContainerColor = SoftInputBg
+                                )
+                            )
+                        }
+
+                        // Wide "+ إضافة الصنف إلى الفاتورة" Button (Screenshot 1)
+                        Button(
+                            onClick = { addItemToInvoice() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("إضافة الصنف إلى الفاتورة", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                        }
+                    }
+                }
+            }
+
+            // 3. The Physical Bill Card (Authentic receipt styling from Screenshot 1)
+            item {
+                SoftCard(
+                    elevation = 3.dp,
+                    shape = RoundedCornerShape(14.dp),
+                    borderColor = Color(0xFFCBD5E1)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Bill Header Row: بقالة العزي ج: 776425052 | [✓] نقداً [ ] آجل | رقم | التاريخ
+                        Surface(
+                            color = Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("بقالة العزي", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF1E3A8A))
+                                    Text("ج: 776425052", fontSize = 10.sp, color = TextMuted)
+                                }
+
+                                // Payment Type Toggle: نقداً / آجل
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clickable { paymentType = PaymentType.CASH }
+                                            .background(if (paymentType == PaymentType.CASH) GreenPrimary else Color.Transparent)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            "نقداً",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (paymentType == PaymentType.CASH) Color.White else TextDark
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clickable { paymentType = PaymentType.CREDIT }
+                                            .background(if (paymentType == PaymentType.CREDIT) RedDebit else Color.Transparent)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            "آجل",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (paymentType == PaymentType.CREDIT) Color.White else TextDark
+                                        )
+                                    }
+                                }
+
+                                // Currency Toggle: ر.ي / ر.س
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clickable { currency = AppCurrency.YER }
+                                            .background(if (currency == AppCurrency.YER) GreenPrimary else Color.Transparent)
+                                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("ر.ي", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = if (currency == AppCurrency.YER) Color.White else TextDark)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clickable { currency = AppCurrency.SAR }
+                                            .background(if (currency == AppCurrency.SAR) AmberSAR else Color.Transparent)
+                                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("ر.س", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = if (currency == AppCurrency.SAR) Color.White else TextDark)
+                                    }
+                                }
+
+                                // Invoice No and Date
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Surface(
+                                        color = Color(0xFFFFEBEE),
+                                        shape = RoundedCornerShape(4.dp),
+                                        border = BorderStroke(0.5.dp, RedDebit)
+                                    ) {
+                                        Text(
+                                            "رقم: $invoiceNumber",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = RedDebit,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                    Text(invoiceDate.split(" ").firstOrNull() ?: invoiceDate, fontSize = 9.5.sp, color = TextMuted)
+                                }
+                            }
+                        }
+
+                        // Customer Line and Quick Customer Chips
+                        OutlinedTextField(
+                            value = customer.name,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("العميل", fontSize = 10.sp) },
+                            singleLine = true,
+                            textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFFCBD5E1),
+                                unfocusedBorderColor = Color(0xFFE2E8F0),
+                                unfocusedContainerColor = SoftInputBg
+                            )
+                        )
+
+                        // Table Header (م | التفاصيل | العدد | سعر الواحدة | الإجمالي)
+                        Surface(
+                            color = Color(0xFF1E3A8A),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("م", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.3f), textAlign = TextAlign.Center)
+                                Text("التفاصيل", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.5f))
+                                Text("العدد", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.6f), textAlign = TextAlign.Center)
+                                Text("سعر الواحدة", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.9f), textAlign = TextAlign.Center)
+                                Text("الإجمالي", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                                Text("حذف", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.4f), textAlign = TextAlign.Center)
+                            }
+                        }
+
+                        // Items list inside the Bill
+                        if (items.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "الفاتورة فارغة. أضف الأصناف عبر الصوت 🎤 أو الشريط أعلاه",
+                                    fontSize = 11.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        } else {
+                            items.forEachIndexed { index, itm ->
+                                Surface(
+                                    color = if (index % 2 == 0) Color.White else Color(0xFFF8FAFC),
+                                    shape = RoundedCornerShape(4.dp),
+                                    border = BorderStroke(0.5.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("${index + 1}", fontSize = 11.sp, color = TextMuted, modifier = Modifier.weight(0.3f), textAlign = TextAlign.Center)
+                                        Text(itm.name, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = TextDark, modifier = Modifier.weight(1.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("${itm.quantity}", fontSize = 11.sp, color = TextDark, modifier = Modifier.weight(0.6f), textAlign = TextAlign.Center)
+                                        Text(String.format("%,.0f", itm.unitPrice), fontSize = 11.sp, color = TextDark, modifier = Modifier.weight(0.9f), textAlign = TextAlign.Center)
+                                        Text(String.format("%,.0f", itm.total), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = GreenPrimary, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+
+                                        // Delete icon
+                                        IconButton(
+                                            onClick = { items.removeAt(index) },
+                                            modifier = Modifier.weight(0.4f).size(24.dp)
                                         ) {
                                             Icon(
-                                                Icons.Default.Inventory2,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(11.dp),
-                                                tint = if (isDeficit) RedDebit else GreenPrimary
-                                            )
-                                            Text(
-                                                text = if (isDeficit) "${stock.name} (عجز: ${stock.quantity.toInt()})"
-                                                else if (stock.salePrice > 0) "${stock.name} (${String.format("%,.0f", stock.salePrice)})"
-                                                else stock.name,
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = if (isDeficit) RedDebit else TextDark
+                                                Icons.Default.Close,
+                                                contentDescription = "حذف",
+                                                tint = RedDebit,
+                                                modifier = Modifier.size(15.dp)
                                             )
                                         }
                                     }
@@ -556,282 +903,139 @@ fun InvoiceScreen(
                             }
                         }
 
-                        // الصف الرئيسي المطلوب: [اسم الصنف] [الكمية] [القيمة الإجمالية] في صف واحد
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Grand Total Banner (Deep Blue banner from Screenshot 1)
+                        Surface(
+                            color = Color(0xFF1E3A8A),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            // 1. اسم الصنف
-                            OutlinedTextField(
-                                value = itemName,
-                                onValueChange = { itemName = it },
-                                label = { Text("اسم الصنف *", fontSize = 10.sp) },
-                                placeholder = { Text("سكر، أرز...", fontSize = 10.sp) },
-                                singleLine = true,
-                                textStyle = TextStyle(fontSize = 11.5.sp),
-                                modifier = Modifier.weight(1.5f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-
-                            // 2. الكمية
-                            OutlinedTextField(
-                                value = itemQty,
-                                onValueChange = { onQuantityChanged(it) },
-                                label = { Text("الكمية", fontSize = 10.sp) },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                textStyle = TextStyle(fontSize = 11.5.sp),
-                                modifier = Modifier.weight(0.75f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-
-                            // 3. القيمة الإجمالية
-                            OutlinedTextField(
-                                value = itemTotal,
-                                onValueChange = { onTotalChanged(it) },
-                                label = { Text("الإجمالي (${currency.symbol})", fontSize = 10.sp) },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                textStyle = TextStyle(fontSize = 11.5.sp, fontWeight = FontWeight.Bold),
-                                modifier = Modifier.weight(1.1f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-
-                            // زر الإضافة السريع في نفس الصف
-                            Button(
-                                onClick = { addItemToInvoice() },
-                                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
-                                contentPadding = PaddingValues(horizontal = 10.dp),
+                            Row(
                                 modifier = Modifier
-                                    .height(44.dp)
-                                    .padding(top = 2.dp),
-                                shape = RoundedCornerShape(4.dp)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = "إضافة الصنف", modifier = Modifier.size(18.dp))
+                                Text(
+                                    "المبلغ الإجمالي العام (Grand Total):",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "${String.format("%,.0f", netTotal)} ${currency.symbol}",
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
 
-                        // سعر الواحدة مستنتج تلقائياً
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        // Payment Details Row (المبلغ الواصل + كامل + المتبقي)
+                        Surface(
+                            color = SoftInputBg,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            if (inferredUnitPrice > 0) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.weight(1.3f)
+                                ) {
+                                    Text("المبلغ الواصل:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                                    OutlinedTextField(
+                                        value = paidStr,
+                                        onValueChange = { paidStr = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                                        placeholder = { Text("0.0", fontSize = 11.sp) },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                                        modifier = Modifier.width(80.dp).height(46.dp),
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = GreenPrimary,
+                                            unfocusedBorderColor = Color(0xFFCBD5E1),
+                                            unfocusedContainerColor = Color.White
+                                        )
+                                    )
+
+                                    // Button: كامل (Quick full payment)
+                                    Button(
+                                        onClick = { paidStr = netTotal.toInt().toString() },
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8F5E9)),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(36.dp)
+                                    ) {
+                                        Text("كامل", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GreenPrimary)
+                                    }
+                                }
+
+                                // Remaining indicator (خالص ✓ vs متبقي)
                                 Surface(
-                                    color = Color(0xFFE8F5E9),
-                                    shape = RoundedCornerShape(3.dp),
-                                    border = BorderStroke(0.5.dp, GreenPrimary.copy(alpha = 0.5f))
+                                    color = if (remaining > 0) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                                    shape = RoundedCornerShape(6.dp),
+                                    border = BorderStroke(0.5.dp, if (remaining > 0) RedDebit else GreenPrimary)
                                 ) {
                                     Text(
-                                        text = "💡 سعر الواحدة المستنتج: ${String.format("%,.1f", inferredUnitPrice).replace(".0", "")} ${currency.symbol} (الإجمالي ÷ الكمية)",
-                                        fontSize = 10.5.sp,
+                                        text = if (remaining > 0) "المتبقي: ${String.format("%,.0f", remaining)} ${currency.symbol}" else "المتبقي: خالص ✓",
+                                        color = if (remaining > 0) RedDebit else GreenPrimary,
                                         fontWeight = FontWeight.Bold,
-                                        color = GreenPrimary,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
-                            } else {
-                                Text(
-                                    text = "💡 سعر الواحدة يُستنتج تلقائياً (الإجمالي ÷ الكمية)",
-                                    fontSize = 10.sp,
-                                    color = TextMuted
-                                )
                             }
                         }
-                    }
-                }
-            }
 
-            // 3. شريط عدد الأصناف وإجمالي الفاتورة
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "أصناف الفاتورة (${items.size})",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = TextDark
-                    )
-                    Text(
-                        "المجموع: ${String.format("%,.0f", subtotal)} ${currency.symbol}",
-                        fontWeight = FontWeight.Bold,
-                        color = GreenPrimary,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-
-            // 4. جدول الأصناف المضافة (مضغوط وعالي الاستغلال للمساحة)
-            if (items.isEmpty()) {
-                item {
-                    Card(
-                        shape = RoundedCornerShape(4.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "لم تتم إضافة أي صنف بعد. اكتب اسم الصنف والقيمة الإجمالية ثم اضغط (+)",
-                                fontSize = 11.sp,
-                                color = TextMuted
-                            )
-                        }
-                    }
-                }
-            } else {
-                itemsIndexed(items) { index, itm ->
-                    Card(
-                        shape = RoundedCornerShape(4.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 6.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // الترتيب واسم الصنف
-                            Column(modifier = Modifier.weight(1.3f)) {
-                                Text(
-                                    "${index + 1}. ${itm.name}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    "${itm.quantity} × ${String.format("%,.1f", itm.unitPrice).replace(".0", "")} (سعر الواحدة)",
-                                    fontSize = 10.sp,
-                                    color = TextMuted
-                                )
-                            }
-
-                            // الإجمالي
-                            Text(
-                                text = "${String.format("%,.0f", itm.total)} ${currency.symbol}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                color = GreenPrimary,
-                                modifier = Modifier.padding(horizontal = 4.dp)
-                            )
-
-                            // حذف الصنف
-                            IconButton(
-                                onClick = { items.removeAt(index) },
-                                modifier = Modifier.size(26.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "حذف الصنف",
-                                    tint = RedDebit,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 5. قسم الإجماليات والخصم والمدفوع والمتبقي (مضغوط جداً)
-            item {
-                Card(
-                    shape = RoundedCornerShape(6.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // صف الخصم والواصل في صف واحد جنب إلى جنب
+                        // Optional Note / Discount
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             OutlinedTextField(
                                 value = discountStr,
                                 onValueChange = { discountStr = it.filter { ch -> ch.isDigit() || ch == '.' } },
                                 label = { Text("الخصم (${currency.symbol})", fontSize = 10.sp) },
+                                placeholder = { Text("0", fontSize = 10.sp) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                textStyle = TextStyle(fontSize = 11.5.sp),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(4.dp)
+                                textStyle = TextStyle(fontSize = 11.sp),
+                                modifier = Modifier.weight(0.8f).height(50.dp),
+                                shape = RoundedCornerShape(8.dp)
                             )
+
                             OutlinedTextField(
-                                value = paidStr,
-                                onValueChange = { paidStr = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                                label = { Text("الواصل / المسدد (${currency.symbol})", fontSize = 10.sp) },
+                                value = invoiceNote,
+                                onValueChange = { invoiceNote = it },
+                                label = { Text("ملاحظة الفاتورة", fontSize = 10.sp) },
+                                placeholder = { Text("اختياري", fontSize = 10.sp) },
                                 singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                textStyle = TextStyle(fontSize = 11.5.sp),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(4.dp)
+                                textStyle = TextStyle(fontSize = 11.sp),
+                                modifier = Modifier.weight(1.2f).height(50.dp),
+                                shape = RoundedCornerShape(8.dp)
                             )
                         }
 
-                        // شريط صافي الفاتورة والمتبقي
+                        // Store Footer Notice (Screenshot 1)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFFF8FAFC), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column {
-                                Text("الصافي بعد الخصم:", fontSize = 10.5.sp, color = TextMuted)
-                                Text(
-                                    "${String.format("%,.0f", netTotal)} ${currency.symbol}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = TextDark
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    if (remaining > 0) "المتبقي (دين على العميل):" else "الرصيد خالص:",
-                                    fontSize = 10.5.sp,
-                                    color = if (remaining > 0) RedDebit else GreenCredit,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    "${String.format("%,.0f", remaining)} ${currency.symbol}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = if (remaining > 0) RedDebit else GreenCredit
-                                )
-                            }
+                            Text("ت.المشتري: ......", fontSize = 9.sp, color = TextMuted)
+                            Text("البضاعة المباعة لا ترد ولا تستبدل", fontSize = 9.sp, color = TextMuted)
+                            Text("ت.البائع: ......", fontSize = 9.sp, color = TextMuted)
                         }
-
-                        // ملاحظات الفاتورة في سطر واحد مضغوط
-                        OutlinedTextField(
-                            value = invoiceNote,
-                            onValueChange = { invoiceNote = it },
-                            label = { Text("ملاحظات الفاتورة أو مرجع السداد (اختياري)", fontSize = 10.sp) },
-                            singleLine = true,
-                            textStyle = TextStyle(fontSize = 11.sp),
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(4.dp)
-                        )
                     }
                 }
             }
@@ -849,9 +1053,39 @@ fun InvoiceScreen(
                 val bmp = ThermalPrinter.createInvoiceBitmap(customer, inv, is80mm = false)
                 val bytes = ThermalPrinter.bitmapToEscPosBytes(bmp)
                 ThermalPrinter.printViaBluetooth(device, bytes) { success, msg ->
-                    (context as? android.app.Activity)?.runOnUiThread {
+                    (context as? Activity)?.runOnUiThread {
                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                     }
+                }
+            }
+        )
+    }
+
+    // Unsaved Exit Confirmation Dialog
+    if (showUnsavedExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnsavedExitDialog = false },
+            title = {
+                Text("تأكيد الخروج", fontWeight = FontWeight.Bold, color = RedDebit)
+            },
+            text = {
+                Text("يوجد أصناف مضافة في الفاتورة لم يتم حفظها بعد.\nهل أنت متأكد من الخروج دون حفظ؟")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUnsavedExitDialog = false
+                        onBack()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RedDebit),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("خروج دون حفظ")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnsavedExitDialog = false }) {
+                    Text("إلغاء")
                 }
             }
         )
